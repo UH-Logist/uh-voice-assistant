@@ -100,54 +100,102 @@ bot.onText(/\/party/, async (msg) => {
     // Сохраняем список партий в состоянии пользователя
     userState.set(chatId, {
       step: 'waiting_party',
-      parties: parties.map(p => p.number)
+      parties: parties.map(p => p.number),
+      allParties: parties, // сохраняем полную информацию
+      currentPage: 0,
+      totalPages: Math.ceil(parties.length / 5) // по 5 партий на страницу
     });
 
-    // Формируем красивое текстовое сообщение со списком партий
-    let messageText = '📋 <b>Список активних партій:</b>\n\n';
-    
-    parties.forEach((party, index) => {
-      messageText += `<b>${index + 1}.</b> <b>${party.number}</b>\n`;
-      messageText += `   └─ ${party.from} → ${party.to}\n`;
-      messageText += `   └─ ${party.status}\n\n`;
-    });
-    
-    messageText += '👇 <b>Виберіть партію:</b>';
-
-    // Создаем клавиатуру с номерами партий
-    const keyboard = [];
-    const buttonsPerRow = 3; // по 3 кнопки в ряд для широких кнопок
-    
-    for (let i = 0; i < parties.length; i += buttonsPerRow) {
-      const row = [];
-      for (let j = 0; j < buttonsPerRow && i + j < parties.length; j++) {
-        const party = parties[i + j];
-        row.push({ 
-          text: `  ${party.number}  `, // пробелы для расширения
-          callback_data: `party_${party.number}`
-        });
-      }
-      keyboard.push(row);
-    }
-    
-    // Добавляем кнопку отмены
-    keyboard.push([{ text: '     ❌ Скасувати     ', callback_data: 'cancel' }]);
-
-    await bot.sendMessage(chatId, 
-      messageText,
-      {
-        parse_mode: 'HTML',
-        reply_markup: {
-          inline_keyboard: keyboard
-        }
-      }
-    );
+    // Показываем первую страницу
+    await showPartiesPage(chatId);
 
   } catch (error) {
     console.error('❌ Ошибка загрузки партий:', error);
     await bot.sendMessage(chatId, '❌ Помилка завантаження партій. Спробуйте пізніше.');
   }
 });
+
+// Функция показа страницы с партиями
+async function showPartiesPage(chatId) {
+  const state = userState.get(chatId);
+  if (!state) return;
+
+  const startIndex = state.currentPage * 5;
+  const endIndex = Math.min(startIndex + 5, state.allParties.length);
+  const currentParties = state.allParties.slice(startIndex, endIndex);
+
+  // Формируем текст для текущей страницы
+  let messageText = `📋 <b>Список активних партій (стор. ${state.currentPage + 1}/${state.totalPages}):</b>\n\n`;
+  
+  currentParties.forEach((party, index) => {
+    const globalIndex = startIndex + index + 1;
+    messageText += `<b>${globalIndex}.</b> <b>${party.number}</b>\n`;
+    messageText += `   └─ ${party.from} → ${party.to}\n`;
+    messageText += `   └─ ${party.status}\n\n`;
+  });
+  
+  messageText += '👇 <b>Виберіть партію:</b>';
+
+  // Создаем клавиатуру с номерами для текущей страницы
+  const keyboard = [];
+  
+  // Кнопки с номерами партий (по 2 в ряд)
+  for (let i = 0; i < currentParties.length; i += 2) {
+    const row = [];
+    const party1 = currentParties[i];
+    row.push({ 
+      text: `  ${party1.number}  `,
+      callback_data: `party_${party1.number}`
+    });
+    
+    if (i + 1 < currentParties.length) {
+      const party2 = currentParties[i + 1];
+      row.push({ 
+        text: `  ${party2.number}  `,
+        callback_data: `party_${party2.number}`
+      });
+    }
+    keyboard.push(row);
+  }
+
+  // Добавляем кнопки навигации (если нужно)
+  const navRow = [];
+  if (state.currentPage > 0) {
+    navRow.push({ text: '⬅️ Назад', callback_data: 'prev_page' });
+  }
+  if (state.currentPage < state.totalPages - 1) {
+    navRow.push({ text: 'Вперед ➡️', callback_data: 'next_page' });
+  }
+  if (navRow.length > 0) {
+    keyboard.push(navRow);
+  }
+  
+  // Добавляем кнопку отмены
+  keyboard.push([{ text: '     ❌ Скасувати     ', callback_data: 'cancel' }]);
+
+  // Отправляем или обновляем сообщение
+  if (state.messageId) {
+    // Редактируем существующее сообщение
+    await bot.editMessageText(messageText, {
+      chat_id: chatId,
+      message_id: state.messageId,
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: keyboard
+      }
+    });
+  } else {
+    // Отправляем новое сообщение и сохраняем его ID
+    const sentMsg = await bot.sendMessage(chatId, messageText, {
+      parse_mode: 'HTML',
+      reply_markup: {
+        inline_keyboard: keyboard
+      }
+    });
+    state.messageId = sentMsg.message_id;
+    userState.set(chatId, state);
+  }
+}
 
 // Команда /cancel
 bot.onText(/\/cancel/, async (msg) => {
@@ -185,6 +233,23 @@ bot.on('callback_query', async (callbackQuery) => {
     });
     return;
   }
+
+      // Кнопки навигации по страницам
+    if (data === 'prev_page' || data === 'next_page') {
+      const state = userState.get(chatId);
+      if (!state) return;
+
+      if (data === 'prev_page' && state.currentPage > 0) {
+        state.currentPage--;
+      }
+      if (data === 'next_page' && state.currentPage < state.totalPages - 1) {
+        state.currentPage++;
+      }
+
+      userState.set(chatId, state);
+      await showPartiesPage(chatId);
+      return;
+    }
 
   // Кнопки "Додати ще одну" и "Вибрати іншу партію"
   if (data === 'add_another' || data === 'choose_party') {
