@@ -54,7 +54,7 @@ try {
 const sheets = google.sheets({ version: 'v4' });
 
 // Хранилище состояний пользователей
-const userState = new Map(); // chatId -> { step, partyNumber, parties }
+const userState = new Map(); // chatId -> { step, partyNumber, parties, allParties, currentPage, totalPages, messageId }
 
 // Настройки команд бота
 bot.setMyCommands([
@@ -103,7 +103,7 @@ bot.onText(/\/party/, async (msg) => {
       parties: parties.map(p => p.number),
       allParties: parties, // сохраняем полную информацию
       currentPage: 0,
-      totalPages: Math.ceil(parties.length / 5) // по 5 партий на страницу
+      totalPages: Math.ceil(parties.length / 10) // по 10 партий на страницу
     });
 
     // Показываем первую страницу
@@ -120,8 +120,8 @@ async function showPartiesPage(chatId) {
   const state = userState.get(chatId);
   if (!state) return;
 
-  const startIndex = state.currentPage * 5;
-  const endIndex = Math.min(startIndex + 5, state.allParties.length);
+  const startIndex = state.currentPage * 10;
+  const endIndex = Math.min(startIndex + 10, state.allParties.length);
   const currentParties = state.allParties.slice(startIndex, endIndex);
 
   // Формируем текст для текущей страницы
@@ -139,20 +139,14 @@ async function showPartiesPage(chatId) {
   // Создаем клавиатуру с номерами для текущей страницы
   const keyboard = [];
   
-  // Кнопки с номерами партий (по 2 в ряд)
-  for (let i = 0; i < currentParties.length; i += 2) {
+  // Кнопки с номерами партий (по 3 в ряд для компактности)
+  for (let i = 0; i < currentParties.length; i += 3) {
     const row = [];
-    const party1 = currentParties[i];
-    row.push({ 
-      text: `  ${party1.number}  `,
-      callback_data: `party_${party1.number}`
-    });
-    
-    if (i + 1 < currentParties.length) {
-      const party2 = currentParties[i + 1];
+    for (let j = 0; j < 3 && i + j < currentParties.length; j++) {
+      const party = currentParties[i + j];
       row.push({ 
-        text: `  ${party2.number}  `,
-        callback_data: `party_${party2.number}`
+        text: ` ${party.number} `,
+        callback_data: `party_${party.number}`
       });
     }
     keyboard.push(row);
@@ -207,7 +201,7 @@ bot.onText(/\/cancel/, async (msg) => {
   await bot.sendMessage(chatId, '✅ Дію скасовано.');
 });
 
-// Обработка callback-кнопок (выбор партии)
+// Обработка callback-кнопок
 bot.on('callback_query', async (callbackQuery) => {
   const chatId = callbackQuery.message.chat.id;
   const messageId = callbackQuery.message.message_id;
@@ -234,22 +228,22 @@ bot.on('callback_query', async (callbackQuery) => {
     return;
   }
 
-      // Кнопки навигации по страницам
-    if (data === 'prev_page' || data === 'next_page') {
-      const state = userState.get(chatId);
-      if (!state) return;
+  // Кнопки навигации по страницам
+  if (data === 'prev_page' || data === 'next_page') {
+    const state = userState.get(chatId);
+    if (!state) return;
 
-      if (data === 'prev_page' && state.currentPage > 0) {
-        state.currentPage--;
-      }
-      if (data === 'next_page' && state.currentPage < state.totalPages - 1) {
-        state.currentPage++;
-      }
-
-      userState.set(chatId, state);
-      await showPartiesPage(chatId);
-      return;
+    if (data === 'prev_page' && state.currentPage > 0) {
+      state.currentPage--;
     }
+    if (data === 'next_page' && state.currentPage < state.totalPages - 1) {
+      state.currentPage++;
+    }
+
+    userState.set(chatId, state);
+    await showPartiesPage(chatId);
+    return;
+  }
 
   // Кнопки "Додати ще одну" и "Вибрати іншу партію"
   if (data === 'add_another' || data === 'choose_party') {
