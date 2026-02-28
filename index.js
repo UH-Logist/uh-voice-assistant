@@ -90,7 +90,7 @@ bot.onText(/\/party/, async (msg) => {
   try {
     await bot.sendMessage(chatId, '🔍 Завантажую список партій...');
     
-    // Получаем список партий из таблицы (теперь с доп. информацией)
+    // Получаем список партий из таблицы
     const parties = await getPartiesList();
     
     if (parties.length === 0) {
@@ -100,27 +100,32 @@ bot.onText(/\/party/, async (msg) => {
     // Сохраняем список партий в состоянии пользователя
     userState.set(chatId, {
       step: 'waiting_party',
-      parties: parties.map(p => p.number) // сохраняем только номера для проверки
+      parties: parties.map(p => p.number)
     });
 
-    // Создаем клавиатуру с партиями (по 2 в ряд)
+    // Формируем красивое текстовое сообщение со списком партий
+    let messageText = '📋 <b>Список активних партій:</b>\n\n';
+    
+    parties.forEach((party, index) => {
+      messageText += `<b>${index + 1}.</b> <b>${party.number}</b>\n`;
+      messageText += `   └─ ${party.from} → ${party.to}\n`;
+      messageText += `   └─ ${party.status}\n\n`;
+    });
+    
+    messageText += '👇 <b>Виберіть партію за номером:</b>';
+
+    // Создаем клавиатуру ТОЛЬКО с номерами (компактно)
     const keyboard = [];
-    for (let i = 0; i < parties.length; i += 2) {
+    const numbersPerRow = 5; // по 5 номеров в ряд
+    
+    for (let i = 0; i < parties.length; i += numbersPerRow) {
       const row = [];
-      
-      // Первая кнопка в ряду
-      const party1 = parties[i];
-      row.push({ 
-        text: `${party1.number}\n${party1.from} - ${party1.to}\n${party1.status}`,
-        callback_data: `party_${party1.number}`
-      });
-      
-      // Вторая кнопка в ряду (если есть)
-      if (i + 1 < parties.length) {
-        const party2 = parties[i + 1];
+      for (let j = 0; j < numbersPerRow && i + j < parties.length; j++) {
+        const party = parties[i + j];
+        // Показываем только порядковый номер для компактности
         row.push({ 
-          text: `${party2.number}\n${party2.from} - ${party2.to}\n${party2.status}`,
-          callback_data: `party_${party2.number}`
+          text: `${i + j + 1}`,
+          callback_data: `party_${party.number}`
         });
       }
       keyboard.push(row);
@@ -130,7 +135,7 @@ bot.onText(/\/party/, async (msg) => {
     keyboard.push([{ text: '❌ Скасувати', callback_data: 'cancel' }]);
 
     await bot.sendMessage(chatId, 
-      '📋 <b>Виберіть партію:</b>', 
+      messageText,
       {
         parse_mode: 'HTML',
         reply_markup: {
@@ -138,6 +143,12 @@ bot.onText(/\/party/, async (msg) => {
         }
       }
     );
+
+  } catch (error) {
+    console.error('❌ Ошибка загрузки партий:', error);
+    await bot.sendMessage(chatId, '❌ Помилка завантаження партій. Спробуйте пізніше.');
+  }
+});
 
   } catch (error) {
     console.error('❌ Ошибка загрузки партий:', error);
@@ -322,16 +333,15 @@ bot.on('message', async (msg) => {
 
 // === ФУНКЦИИ РАБОТЫ С GOOGLE SHEETS ===
 
-// Получение списка партий с дополнительной информацией
+// Получение списка партий с полной информацией
 async function getPartiesList() {
   try {
     console.log('🔍 Читаю лист Рейсы...');
     
-    // Получаем данные из колонок B (партии), C (откуда), D (куда), G (статус)
     const response = await sheets.spreadsheets.values.get({
       auth: await auth.getClient(),
       spreadsheetId: config.SPREADSHEET_ID,
-      range: 'Рейсы!B:G'  // B = партии, C = откуда, D = куда, G = статус
+      range: 'Рейсы!B:G'
     });
 
     console.log('✅ Ответ от Sheets получен');
@@ -343,34 +353,27 @@ async function getPartiesList() {
       return [];
     }
 
-    // Пропускаем заголовок (первую строку)
     const parties = [];
     
     for (let i = 1; i < rows.length; i++) {
       const party = rows[i]?.[0];      // колонка B
       const from = rows[i]?.[1] || '';  // колонка C
       const to = rows[i]?.[2] || '';    // колонка D
-      const status = rows[i]?.[5] || ''; // колонка G (индекс 5)
+      const status = rows[i]?.[5] || ''; // колонка G
       
-      // Пропускаем пустые партии
       if (!party || party.toString().trim() === '') continue;
       
-      // Проверяем статус - показываем, если статус НЕ "Доставлено"
       const statusLower = status.toString().toLowerCase().trim();
       
       if (statusLower !== 'доставлено') {
-        // Получаем первые 3 буквы (или меньше если короткое)
-        const fromShort = from.toString().trim().substring(0, 3).toUpperCase();
-        const toShort = to.toString().trim().substring(0, 3).toUpperCase();
-        
         parties.push({
           number: party.toString().trim(),
-          from: fromShort,
-          to: toShort,
+          from: from.toString().trim(),
+          to: to.toString().trim(),
           status: status.toString().trim() || 'немає статусу'
         });
         
-        console.log(`✅ Партия ${party} добавлена: ${fromShort}-${toShort} (${status})`);
+        console.log(`✅ Партия ${party} добавлена: ${from} → ${to} (${status})`);
       } else {
         console.log(`⏭️ Партия ${party} пропущена (статус: Доставлено)`);
       }
