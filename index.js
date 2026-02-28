@@ -286,7 +286,46 @@ bot.on('callback_query', async (callbackQuery) => {
 });
 
 // === ФУНКЦИИ РАБОТЫ С GOOGLE SHEETS ===
+// Получение списка партий из колонки B листа "Рейсы"
+async function getPartiesList() {
+  try {
+    console.log('🔍 Читаю лист Рейсы...');
+    
+    const response = await sheets.spreadsheets.values.get({
+      auth: await auth.getClient(),
+      spreadsheetId: config.SPREADSHEET_ID,
+      range: 'Рейсы!B:B'
+    });
 
+    console.log('✅ Ответ от Sheets получен');
+    const rows = response.data.values || [];
+    console.log(`📊 Найдено строк: ${rows.length}`);
+
+    if (rows.length === 0) {
+      console.log('⚠️ Лист Рейсы пуст');
+      return [];
+    }
+
+    // Пропускаем заголовок (первую строку) и фильтруем пустые
+    const parties = rows.slice(1)
+      .map(row => row[0])
+      .filter(party => party && party.toString().trim() !== '');
+    
+    console.log(`📋 Найдено партий: ${parties.length}`);
+    console.log('📋 Первые 5 партий:', parties.slice(0, 5));
+    
+    return parties;
+  } catch (error) {
+    console.error('❌ Ошибка получения партий:', error);
+    console.error('❌ Детали ошибки:', error.message);
+    if (error.response) {
+      console.error('❌ Ответ API:', error.response.data);
+    }
+    throw error;
+  }
+}
+
+/*
 // Получение списка партий из колонки B листа "Рейсы"
 async function getPartiesList() {
   try {
@@ -308,7 +347,7 @@ async function getPartiesList() {
     throw error;
   }
 }
-
+*/
 // Добавление заметки к партии в колонку H
 async function addNoteToParty(partyNumber, note) {
   try {
@@ -392,6 +431,47 @@ app.listen(PORT, () => {
   console.log('👤 Admin ID:', config.ADMIN_CHAT_ID);
   console.log('📊 Spreadsheet ID:', config.SPREADSHEET_ID);
 });
+
+// ВРЕМЕННАЯ ФУНКЦИЯ для диагностики - добавьте перед app.listen()
+async function diagnoseSheets() {
+  try {
+    console.log('🔍 Диагностика доступа к таблице...');
+    
+    // Проверяем, что можем подключиться
+    const sheetsClient = google.sheets({ version: 'v4', auth: await auth.getClient() });
+    
+    // Получаем информацию о таблице
+    const info = await sheetsClient.spreadsheets.get({
+      spreadsheetId: config.SPREADSHEET_ID
+    });
+    
+    console.log('✅ Подключение к таблице успешно');
+    console.log('📋 Название таблицы:', info.data.properties.title);
+    console.log('📊 Доступные листы:');
+    info.data.sheets.forEach(sheet => {
+      console.log(`   - ${sheet.properties.title}`);
+    });
+    
+    // Проверяем лист Рейсы
+    try {
+      const test = await sheetsClient.spreadsheets.values.get({
+        auth: await auth.getClient(),
+        spreadsheetId: config.SPREADSHEET_ID,
+        range: 'Рейсы!B1:B5'
+      });
+      console.log('✅ Лист "Рейсы" доступен');
+      console.log('📋 Первые строки:', test.data.values);
+    } catch (e) {
+      console.error('❌ Лист "Рейсы" НЕ доступен:', e.message);
+    }
+    
+  } catch (error) {
+    console.error('❌ Диагностика провалена:', error);
+  }
+}
+
+// Вызовите функцию
+diagnoseSheets();
 
 /*
 // index.js
