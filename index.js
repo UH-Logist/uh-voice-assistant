@@ -103,16 +103,25 @@ bot.onText(/\/party/, async (msg) => {
       parties: parties
     });
 
-    // Создаем клавиатуру с партиями (по 2 в ряд)
-    const keyboard = [];
-    for (let i = 0; i < parties.length; i += 2) {
-      const row = [];
-      row.push({ text: parties[i].toString() });
-      if (i + 1 < parties.length) {
-        row.push({ text: parties[i + 1].toString() });
-      }
-      keyboard.push(row);
-    }
+// Создаем клавиатуру с партиями (по 2 в ряд)
+const keyboard = [];
+for (let i = 0; i < parties.length; i += 2) {
+  const row = [];
+  // ВАЖНО: text - это то, что видит пользователь
+  // callback_data - это то, что отправляется боту (должно быть уникальным)
+  row.push({ 
+    text: parties[i].toString(),
+    callback_data: `party_${parties[i]}`  // Добавляем префикс
+  });
+  
+  if (i + 1 < parties.length) {
+    row.push({ 
+      text: parties[i + 1].toString(),
+      callback_data: `party_${parties[i + 1]}`  // Добавляем префикс
+    });
+  }
+  keyboard.push(row);
+}
     
     // Добавляем кнопку отмены
     keyboard.push([{ text: '❌ Скасувати', callback_data: 'cancel' }]);
@@ -161,15 +170,15 @@ bot.on('callback_query', async (callbackQuery) => {
     return bot.answerCallbackQuery(callbackQuery.id);
   }
 
-  // Проверяем, что это номер партии
-  const state = userState.get(chatId);
-  if (state && state.step === 'waiting_party') {
-    const partyNumber = data;
-    
-    // Проверяем, что партия есть в списке
-    if (!state.parties.includes(partyNumber)) {
-      return bot.answerCallbackQuery(callbackQuery.id, { text: '❌ Невірний номер партії' });
-    }
+// Проверяем, что это номер партии (callback_data начинается с "party_")
+const state = userState.get(chatId);
+if (state && state.step === 'waiting_party' && data.startsWith('party_')) {
+  const partyNumber = data.replace('party_', ''); // Убираем префикс
+  
+  // Проверяем, что партия есть в списке
+  if (!state.parties.includes(partyNumber)) {
+    return bot.answerCallbackQuery(callbackQuery.id, { text: '❌ Невірний номер партії' });
+  }
 
     // Сохраняем выбранную партию
     userState.set(chatId, {
