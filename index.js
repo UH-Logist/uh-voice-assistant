@@ -90,32 +90,37 @@ bot.onText(/\/party/, async (msg) => {
   try {
     await bot.sendMessage(chatId, '🔍 Завантажую список партій...');
     
-    // Получаем список партий из таблицы
+    // Получаем список партий из таблицы (теперь с доп. информацией)
     const parties = await getPartiesList();
     
     if (parties.length === 0) {
-      return bot.sendMessage(chatId, '❌ Не знайдено жодної партії в таблиці.');
+      return bot.sendMessage(chatId, '❌ Немає активних партій (усі доставлені або таблиця порожня).');
     }
 
     // Сохраняем список партий в состоянии пользователя
     userState.set(chatId, {
       step: 'waiting_party',
-      parties: parties
+      parties: parties.map(p => p.number) // сохраняем только номера для проверки
     });
 
     // Создаем клавиатуру с партиями (по 2 в ряд)
     const keyboard = [];
     for (let i = 0; i < parties.length; i += 2) {
       const row = [];
+      
+      // Первая кнопка в ряду
+      const party1 = parties[i];
       row.push({ 
-        text: parties[i].toString(),
-        callback_data: `party_${parties[i]}`
+        text: `${party1.number}\n${party1.from} - ${party1.to}\n${party1.status}`,
+        callback_data: `party_${party1.number}`
       });
       
+      // Вторая кнопка в ряду (если есть)
       if (i + 1 < parties.length) {
+        const party2 = parties[i + 1];
         row.push({ 
-          text: parties[i + 1].toString(),
-          callback_data: `party_${parties[i + 1]}`
+          text: `${party2.number}\n${party2.from} - ${party2.to}\n${party2.status}`,
+          callback_data: `party_${party2.number}`
         });
       }
       keyboard.push(row);
@@ -125,7 +130,7 @@ bot.onText(/\/party/, async (msg) => {
     keyboard.push([{ text: '❌ Скасувати', callback_data: 'cancel' }]);
 
     await bot.sendMessage(chatId, 
-      '📋 <b>Виберіть номер партії:</b>', 
+      '📋 <b>Виберіть партію:</b>', 
       {
         parse_mode: 'HTML',
         reply_markup: {
@@ -317,16 +322,16 @@ bot.on('message', async (msg) => {
 
 // === ФУНКЦИИ РАБОТЫ С GOOGLE SHEETS ===
 
-// Получение списка партий из колонки B, где статус (колонка G) не "Доставлено"
+// Получение списка партий с дополнительной информацией
 async function getPartiesList() {
   try {
     console.log('🔍 Читаю лист Рейсы...');
     
-    // Получаем данные из колонок B (партии) и G (статус)
+    // Получаем данные из колонок B (партии), C (откуда), D (куда), G (статус)
     const response = await sheets.spreadsheets.values.get({
       auth: await auth.getClient(),
       spreadsheetId: config.SPREADSHEET_ID,
-      range: 'Рейсы!B:G'  // B = партии, G = статус
+      range: 'Рейсы!B:G'  // B = партии, C = откуда, D = куда, G = статус
     });
 
     console.log('✅ Ответ от Sheets получен');
@@ -342,18 +347,30 @@ async function getPartiesList() {
     const parties = [];
     
     for (let i = 1; i < rows.length; i++) {
-      const party = rows[i]?.[0]; // колонка B
-      const status = rows[i]?.[5]; // колонка G (индекс 5)
+      const party = rows[i]?.[0];      // колонка B
+      const from = rows[i]?.[1] || '';  // колонка C
+      const to = rows[i]?.[2] || '';    // колонка D
+      const status = rows[i]?.[5] || ''; // колонка G (индекс 5)
       
       // Пропускаем пустые партии
       if (!party || party.toString().trim() === '') continue;
       
       // Проверяем статус - показываем, если статус НЕ "Доставлено"
-      const statusLower = (status || '').toString().toLowerCase().trim();
+      const statusLower = status.toString().toLowerCase().trim();
       
       if (statusLower !== 'доставлено') {
-        parties.push(party.toString().trim());
-        console.log(`✅ Партия ${party} добавлена (статус: "${status || 'пусто'}")`);
+        // Получаем первые 3 буквы (или меньше если короткое)
+        const fromShort = from.toString().trim().substring(0, 3).toUpperCase();
+        const toShort = to.toString().trim().substring(0, 3).toUpperCase();
+        
+        parties.push({
+          number: party.toString().trim(),
+          from: fromShort,
+          to: toShort,
+          status: status.toString().trim() || 'немає статусу'
+        });
+        
+        console.log(`✅ Партия ${party} добавлена: ${fromShort}-${toShort} (${status})`);
       } else {
         console.log(`⏭️ Партия ${party} пропущена (статус: Доставлено)`);
       }
