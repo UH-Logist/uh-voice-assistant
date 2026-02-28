@@ -416,10 +416,24 @@ bot.on('message', async (msg) => {
 
   } catch (error) {
     console.error('❌ Ошибка добавления:', error);
-    await bot.sendMessage(chatId, 
-      '❌ Помилка при додаванні нотатки. Спробуйте ще раз.',
-      { reply_to_message_id: msg.message_id }
-    );
+    
+    // Проверяем, это ошибка защиты?
+    if (error.message && error.message.includes('захищена')) {
+      await bot.sendMessage(chatId, 
+        `❌ <b>Не вдалося додати нотатку</b>\n\n` +
+        `🔒 <i>${error.message}</i>\n\n` +
+        `📊 Зачекайте, поки завершиться оновлення бази, і спробуйте ще раз.`,
+        { 
+          parse_mode: 'HTML',
+          reply_to_message_id: msg.message_id 
+        }
+      );
+    } else {
+      await bot.sendMessage(chatId, 
+        '❌ Помилка при додаванні нотатки. Спробуйте ще раз.',
+        { reply_to_message_id: msg.message_id }
+      );
+    }
   }
 });
 
@@ -547,6 +561,12 @@ async function addNoteToParty(partyNumber, note) {
 
   } catch (error) {
     console.error('❌ Ошибка добавления заметки:', error);
+    
+    // Проверяем, это ошибка защиты?
+    if (error.code === 400 && error.errors && error.errors[0].reason === 'badRequest') {
+      throw new Error('Ячейка захищена від редагування (база оновлюється). Спробуйте за хвилину.');
+    }
+    
     throw error;
   }
 }
@@ -560,25 +580,35 @@ async function markSyncTime() {
     
     // Получаем текущее время
     const now = new Date();
-    const futureTime = new Date(now.getTime()); // если нужно +5 минут, добавьте + 5*60*1000
     
-    // Форматируем время для отображения
+    // Форматируем время для ячейки Y1 в нужном формате: "28.02.2026 19:47:10"
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const year = now.getFullYear();
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    
+    const formattedDateTime = `${day}.${month}.${year} ${hours}:${minutes}:${seconds}`;
+    
+    // Форматируем время для отображения в сообщении
     const formattedTime = now.toLocaleString('uk-UA', { 
       timeZone: 'Europe/Kyiv',
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      second: '2-digit'
     }).replace(',', '');
     
-    // Обновляем ячейку Y1
+    // Обновляем ячейку Y1 с правильным форматом
     await sheetsClient.spreadsheets.values.update({
       spreadsheetId: config.SPREADSHEET_ID,
       range: 'Рейсы!Y1',
       valueInputOption: 'USER_ENTERED',
       requestBody: {
-        values: [[futureTime.toISOString()]]
+        values: [[formattedDateTime]]
       }
     });
     
