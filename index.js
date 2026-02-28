@@ -84,14 +84,17 @@ bot.onText(/\/start/, async (msg) => {
 // Команда /party - выбор партии
 bot.onText(/\/party/, async (msg) => {
   const chatId = msg.chat.id;
+   console.log('📋 Команда /party получена от chatId:', chatId);
   
   if (String(chatId) !== String(config.ADMIN_CHAT_ID)) return;
 
   try {
     await bot.sendMessage(chatId, '🔍 Завантажую список партій...');
+    console.log('🔍 Загружаем список партий из Google Sheets');
     
     // Получаем список партий из таблицы
     const parties = await getPartiesList();
+    console.log('📋 Получены партии:', parties);
     
     if (parties.length === 0) {
       return bot.sendMessage(chatId, '❌ Не знайдено жодної партії в таблиці.');
@@ -155,36 +158,97 @@ bot.onText(/\/cancel/, async (msg) => {
 // Обработка callback-кнопок
 bot.on('callback_query', async (callbackQuery) => {
   const chatId = callbackQuery.message.chat.id;
+  const messageId = callbackQuery.message.message_id;
   const data = callbackQuery.data;
   
+  console.log('📩 Получен callback_query:');
+  console.log('   - Chat ID:', chatId);
+  console.log('   - Data:', data);
+  console.log('   - Message ID:', messageId);
+  
+  // Проверяем админа
   if (String(chatId) !== String(config.ADMIN_CHAT_ID)) {
+    console.log('⛔ Доступ запрещен для chatId:', chatId);
     return bot.answerCallbackQuery(callbackQuery.id, { text: '❌ Доступ заборонено' });
   }
 
+  // Всегда отвечаем на callback_query, чтобы убрать "часики" на кнопке
+  await bot.answerCallbackQuery(callbackQuery.id);
+  console.log('✅ Ответ на callback_query отправлен');
+
+  // Кнопка отмены
   if (data === 'cancel') {
+    console.log('🔄 Обработка cancel');
     userState.delete(chatId);
     await bot.editMessageText('❌ Дію скасовано.', {
       chat_id: chatId,
-      message_id: callbackQuery.message.message_id
+      message_id: messageId
     });
-    return bot.answerCallbackQuery(callbackQuery.id);
+    return;
   }
 
-// Проверяем, что это номер партии (callback_data начинается с "party_")
-const state = userState.get(chatId);
-if (state && state.step === 'waiting_party' && data.startsWith('party_')) {
-  const partyNumber = data.replace('party_', ''); // Убираем префикс
-  
+  // Проверяем состояние пользователя
+  const state = userState.get(chatId);
+  console.log('📊 Состояние пользователя:', state);
+
+  if (!state) {
+    console.log('⚠️ Нет состояния для пользователя');
+    await bot.editMessageText('❌ Сесія застаріла. Почніть заново з /party', {
+      chat_id: chatId,
+      message_id: messageId
+    });
+    return;
+  }
+
+  if (state.step !== 'waiting_party') {
+    console.log('⚠️ Неправильный шаг:', state.step, 'ожидается: waiting_party');
+    return;
+  }
+
+  // Проверяем, что это номер партии (начинается с "party_")
+  if (!data.startsWith('party_')) {
+    console.log('⚠️ Неправильный формат data:', data);
+    return;
+  }
+
+  const partyNumber = data.replace('party_', '');
+  console.log('📋 Выбрана партия:', partyNumber);
+
   // Проверяем, что партия есть в списке
   if (!state.parties.includes(partyNumber)) {
-    return bot.answerCallbackQuery(callbackQuery.id, { text: '❌ Невірний номер партії' });
+    console.log('❌ Партия не найдена в списке:', partyNumber);
+    console.log('📋 Доступные партии:', state.parties);
+    await bot.editMessageText(`❌ Партія ${partyNumber} не знайдена в списку`, {
+      chat_id: chatId,
+      message_id: messageId
+    });
+    return;
   }
 
-    // Сохраняем выбранную партию
-    userState.set(chatId, {
-      step: 'waiting_message',
-      partyNumber: partyNumber
-    });
+  console.log('✅ Партия найдена, сохраняем состояние');
+
+  // Сохраняем выбранную партию
+  userState.set(chatId, {
+    step: 'waiting_message',
+    partyNumber: partyNumber
+  });
+
+  console.log('🔄 Обновляем сообщение');
+
+  try {
+    await bot.editMessageText(
+      `✅ Вибрано партію: <b>${partyNumber}</b>\n\n📝 Тепер надішліть текст, який хочете додати:`,
+      {
+        chat_id: chatId,
+        message_id: messageId,
+        parse_mode: 'HTML'
+      }
+    );
+    console.log('✅ Сообщение обновлено');
+  } catch (error) {
+    console.error('❌ Ошибка при обновлении сообщения:', error);
+  }
+});
 
     await bot.editMessageText(
       `✅ Вибрано партію: <b>${partyNumber}</b>\n\n📝 Тепер надішліть текст, який хочете додати:`,
