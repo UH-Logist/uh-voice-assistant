@@ -84,17 +84,14 @@ bot.onText(/\/start/, async (msg) => {
 // Команда /party - выбор партии
 bot.onText(/\/party/, async (msg) => {
   const chatId = msg.chat.id;
-   console.log('📋 Команда /party получена от chatId:', chatId);
   
   if (String(chatId) !== String(config.ADMIN_CHAT_ID)) return;
 
   try {
     await bot.sendMessage(chatId, '🔍 Завантажую список партій...');
-    console.log('🔍 Загружаем список партий из Google Sheets');
     
     // Получаем список партий из таблицы
     const parties = await getPartiesList();
-    console.log('📋 Получены партии:', parties);
     
     if (parties.length === 0) {
       return bot.sendMessage(chatId, '❌ Не знайдено жодної партії в таблиці.');
@@ -106,25 +103,23 @@ bot.onText(/\/party/, async (msg) => {
       parties: parties
     });
 
-// Создаем клавиатуру с партиями (по 2 в ряд)
-const keyboard = [];
-for (let i = 0; i < parties.length; i += 2) {
-  const row = [];
-  // ВАЖНО: text - это то, что видит пользователь
-  // callback_data - это то, что отправляется боту (должно быть уникальным)
-  row.push({ 
-    text: parties[i].toString(),
-    callback_data: `party_${parties[i]}`  // Добавляем префикс
-  });
-  
-  if (i + 1 < parties.length) {
-    row.push({ 
-      text: parties[i + 1].toString(),
-      callback_data: `party_${parties[i + 1]}`  // Добавляем префикс
-    });
-  }
-  keyboard.push(row);
-}
+    // Создаем клавиатуру с партиями (по 2 в ряд)
+    const keyboard = [];
+    for (let i = 0; i < parties.length; i += 2) {
+      const row = [];
+      row.push({ 
+        text: parties[i].toString(),
+        callback_data: `party_${parties[i]}`
+      });
+      
+      if (i + 1 < parties.length) {
+        row.push({ 
+          text: parties[i + 1].toString(),
+          callback_data: `party_${parties[i + 1]}`
+        });
+      }
+      keyboard.push(row);
+    }
     
     // Добавляем кнопку отмены
     keyboard.push([{ text: '❌ Скасувати', callback_data: 'cancel' }]);
@@ -161,22 +156,16 @@ bot.on('callback_query', async (callbackQuery) => {
   const messageId = callbackQuery.message.message_id;
   const data = callbackQuery.data;
   
-  console.log('📩 Получен callback_query:');
-  console.log('   - Chat ID:', chatId);
-  console.log('   - Data:', data);
-  console.log('   - Message ID:', messageId);
+  console.log('📩 Получен callback_query:', { chatId, data, messageId });
   
-  // Проверяем админа
   if (String(chatId) !== String(config.ADMIN_CHAT_ID)) {
-    console.log('⛔ Доступ запрещен для chatId:', chatId);
+    console.log('⛔ Доступ запрещен');
     return bot.answerCallbackQuery(callbackQuery.id, { text: '❌ Доступ заборонено' });
   }
 
-  // Всегда отвечаем на callback_query, чтобы убрать "часики" на кнопке
   await bot.answerCallbackQuery(callbackQuery.id);
   console.log('✅ Ответ на callback_query отправлен');
 
-  // Кнопка отмены
   if (data === 'cancel') {
     console.log('🔄 Обработка cancel');
     userState.delete(chatId);
@@ -187,12 +176,11 @@ bot.on('callback_query', async (callbackQuery) => {
     return;
   }
 
-  // Проверяем состояние пользователя
   const state = userState.get(chatId);
   console.log('📊 Состояние пользователя:', state);
 
   if (!state) {
-    console.log('⚠️ Нет состояния для пользователя');
+    console.log('⚠️ Нет состояния');
     await bot.editMessageText('❌ Сесія застаріла. Почніть заново з /party', {
       chat_id: chatId,
       message_id: messageId
@@ -201,11 +189,10 @@ bot.on('callback_query', async (callbackQuery) => {
   }
 
   if (state.step !== 'waiting_party') {
-    console.log('⚠️ Неправильный шаг:', state.step, 'ожидается: waiting_party');
+    console.log('⚠️ Неправильный шаг:', state.step);
     return;
   }
 
-  // Проверяем, что это номер партии (начинается с "party_")
   if (!data.startsWith('party_')) {
     console.log('⚠️ Неправильный формат data:', data);
     return;
@@ -214,10 +201,8 @@ bot.on('callback_query', async (callbackQuery) => {
   const partyNumber = data.replace('party_', '');
   console.log('📋 Выбрана партия:', partyNumber);
 
-  // Проверяем, что партия есть в списке
   if (!state.parties.includes(partyNumber)) {
-    console.log('❌ Партия не найдена в списке:', partyNumber);
-    console.log('📋 Доступные партии:', state.parties);
+    console.log('❌ Партия не найдена');
     await bot.editMessageText(`❌ Партія ${partyNumber} не знайдена в списку`, {
       chat_id: chatId,
       message_id: messageId
@@ -227,13 +212,10 @@ bot.on('callback_query', async (callbackQuery) => {
 
   console.log('✅ Партия найдена, сохраняем состояние');
 
-  // Сохраняем выбранную партию
   userState.set(chatId, {
     step: 'waiting_message',
     partyNumber: partyNumber
   });
-
-  console.log('🔄 Обновляем сообщение');
 
   try {
     await bot.editMessageText(
@@ -250,54 +232,30 @@ bot.on('callback_query', async (callbackQuery) => {
   }
 });
 
-    await bot.editMessageText(
-      `✅ Вибрано партію: <b>${partyNumber}</b>\n\n📝 Тепер надішліть текст, який хочете додати:`,
-      {
-        chat_id: chatId,
-        message_id: callbackQuery.message.message_id,
-        parse_mode: 'HTML'
-      }
-    );
-    
-    bot.answerCallbackQuery(callbackQuery.id);
-  }
-});
-
 // Обработка текстовых сообщений
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
   
-  // Только админ
   if (String(chatId) !== String(config.ADMIN_CHAT_ID)) return;
-
-  // Игнорируем команды
   if (msg.text?.startsWith('/')) return;
   if (!msg.text || msg.text.trim() === '') return;
 
-  // Проверяем состояние пользователя
   const state = userState.get(chatId);
   
   if (!state || state.step !== 'waiting_message') {
-    // Если не в режиме ожидания сообщения - предлагаем выбрать партию
     return bot.sendMessage(chatId, 
       '❌ Спочатку виберіть партію командою /party',
-      {
-        reply_to_message_id: msg.message_id
-      }
+      { reply_to_message_id: msg.message_id }
     );
   }
 
   try {
-    // Сообщаем, что начали обработку
     await bot.sendChatAction(chatId, 'typing');
     
-    // Добавляем сообщение к партии
     const result = await addNoteToParty(state.partyNumber, msg.text);
     
-    // Очищаем состояние
     userState.delete(chatId);
     
-    // Отправляем подтверждение
     await bot.sendMessage(chatId, 
       `✅ <b>Нотатку додано до партії ${state.partyNumber}</b>\n\n` +
       `📝 <i>${msg.text}</i>`,
@@ -333,8 +291,9 @@ bot.on('callback_query', async (callbackQuery) => {
     return bot.answerCallbackQuery(callbackQuery.id, { text: '❌ Доступ заборонено' });
   }
 
+  await bot.answerCallbackQuery(callbackQuery.id);
+
   if (data === 'add_another') {
-    // Оставляем ту же партию
     const state = userState.get(chatId);
     if (state && state.partyNumber) {
       userState.set(chatId, {
@@ -354,11 +313,10 @@ bot.on('callback_query', async (callbackQuery) => {
     userState.delete(chatId);
     await bot.sendMessage(chatId, '🔍 Використайте /party для вибору іншої партії');
   }
-  
-  await bot.answerCallbackQuery(callbackQuery.id);
 });
 
 // === ФУНКЦИИ РАБОТЫ С GOOGLE SHEETS ===
+
 // Получение списка партий из колонки B листа "Рейсы"
 async function getPartiesList() {
   try {
@@ -390,37 +348,10 @@ async function getPartiesList() {
     return parties;
   } catch (error) {
     console.error('❌ Ошибка получения партий:', error);
-    console.error('❌ Детали ошибки:', error.message);
-    if (error.response) {
-      console.error('❌ Ответ API:', error.response.data);
-    }
     throw error;
   }
 }
 
-/*
-// Получение списка партий из колонки B листа "Рейсы"
-async function getPartiesList() {
-  try {
-    const response = await sheets.spreadsheets.values.get({
-      auth: await auth.getClient(),
-      spreadsheetId: config.SPREADSHEET_ID,
-      range: 'Рейсы!B:B'
-    });
-
-    const rows = response.data.values || [];
-    // Пропускаем заголовок (первую строку) и фильтруем пустые
-    const parties = rows.slice(1)
-      .map(row => row[0])
-      .filter(party => party && party.toString().trim() !== '');
-    
-    return parties;
-  } catch (error) {
-    console.error('❌ Ошибка получения партий:', error);
-    throw error;
-  }
-}
-*/
 // Добавление заметки к партии в колонку H
 async function addNoteToParty(partyNumber, note) {
   try {
@@ -492,28 +423,13 @@ async function addNoteToParty(partyNumber, note) {
   }
 }
 
-// Самопинг для Render
-setInterval(() => {
-  axios.get(config.PUBLIC_URL).catch(() => {});
-}, 14 * 60 * 1000);
-
-// Запуск сервера
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log('🚀 Bot запущен на порту', PORT);
-  console.log('👤 Admin ID:', config.ADMIN_CHAT_ID);
-  console.log('📊 Spreadsheet ID:', config.SPREADSHEET_ID);
-});
-
-// ВРЕМЕННАЯ ФУНКЦИЯ для диагностики - добавьте перед app.listen()
+// === ДИАГНОСТИКА ===
 async function diagnoseSheets() {
   try {
     console.log('🔍 Диагностика доступа к таблице...');
     
-    // Проверяем, что можем подключиться
     const sheetsClient = google.sheets({ version: 'v4', auth: await auth.getClient() });
     
-    // Получаем информацию о таблице
     const info = await sheetsClient.spreadsheets.get({
       spreadsheetId: config.SPREADSHEET_ID
     });
@@ -525,7 +441,6 @@ async function diagnoseSheets() {
       console.log(`   - ${sheet.properties.title}`);
     });
     
-    // Проверяем лист Рейсы
     try {
       const test = await sheetsClient.spreadsheets.values.get({
         auth: await auth.getClient(),
@@ -543,196 +458,6 @@ async function diagnoseSheets() {
   }
 }
 
-// Вызовите функцию
-diagnoseSheets();
-
-/*
-// index.js
-const TelegramBot = require('node-telegram-bot-api');
-const express = require('express');
-const cors = require('cors');
-const { google } = require('googleapis');
-const path = require('path');
-const axios = require('axios');
-
-// Загружаем конфигурацию
-const config = require('./config');
-
-// Проверка обязательных параметров
-if (!config.BOT_TOKEN) throw new Error('BOT_TOKEN is required');
-if (!config.ADMIN_CHAT_ID) throw new Error('ADMIN_CHAT_ID is required');
-if (!config.SPREADSHEET_ID) throw new Error('SPREADSHEET_ID is required');
-
-const app = express();
-app.use(cors());
-app.use(express.json());
-
-// Инициализация бота
-const bot = new TelegramBot(config.BOT_TOKEN, { webHook: true });
-bot.setWebHook(`${config.PUBLIC_URL}/bot${config.BOT_TOKEN}`);
-
-// Webhook endpoint
-app.post(`/bot${config.BOT_TOKEN}`, (req, res) => {
-  bot.processUpdate(req.body);
-  res.sendStatus(200);
-});
-
-// Health check
-app.get('/', (_, res) => res.status(200).send('✅ Bot is running'));
-
-// Google Sheets клиент
-let auth;
-
-// Используем credentials из переменной окружения CREDENTIALS_JSON
-if (!process.env.CREDENTIALS_JSON) {
-  console.error('❌ CREDENTIALS_JSON не найдена в переменных окружения!');
-  throw new Error('CREDENTIALS_JSON environment variable is required');
-}
-
-try {
-  const credentials = JSON.parse(process.env.CREDENTIALS_JSON);
-  auth = new google.auth.GoogleAuth({
-    credentials: credentials,
-    scopes: ['https://www.googleapis.com/auth/spreadsheets']
-  });
-  console.log('✅ Google Sheets авторизация настроена через CREDENTIALS_JSON');
-} catch (error) {
-  console.error('❌ Ошибка парсинга CREDENTIALS_JSON:', error.message);
-  throw error;
-}
-
-// Настройки команд бота
-bot.setMyCommands([
-  { command: 'start', description: 'Запустити бота' },
-  { command: 'help', description: 'Допомога' }
-]);
-
-// Команда /start
-bot.onText(/\/start/, async (msg) => {
-  const chatId = msg.chat.id;
-  
-  // Проверяем, что это админ
-  if (String(chatId) !== String(config.ADMIN_CHAT_ID)) {
-    return bot.sendMessage(chatId, '⛔ Цей бот персональний і доступний тільки для власника.');
-  }
-
-  await bot.sendMessage(chatId, 
-    '👋 <b>Вітаю!</b>\n\n' +
-    'Надсилайте будь-які текстові повідомлення, і вони будуть зберігатися в Google Таблицю.\n\n' +
-    'Команди:\n' +
-    '/help - Допомога',
-    { parse_mode: 'HTML' }
-  );
-});
-
-// Команда /help
-bot.onText(/\/help/, async (msg) => {
-  const chatId = msg.chat.id;
-  
-  if (String(chatId) !== String(config.ADMIN_CHAT_ID)) return;
-
-  await bot.sendMessage(chatId,
-    '📋 <b>Допомога</b>\n\n' +
-    'Просто надішліть текстове повідомлення — воно автоматично збережеться в Google Таблицю.\n\n' +
-    '📊 Дані зберігаються у листі "Текстові повідомлення"',
-    { parse_mode: 'HTML' }
-  );
-});
-
-// === СОХРАНЕНИЕ ТЕКСТОВЫХ СООБЩЕНИЙ ===
-bot.on('message', async (msg) => {
-  const chatId = msg.chat.id;
-  
-  // Только админ
-  if (String(chatId) !== String(config.ADMIN_CHAT_ID)) return;
-
-  // Игнорируем команды и служебные сообщения
-  if (msg.text?.startsWith('/') || msg.voice || msg.contact) return;
-  if (!msg.text || msg.text.trim() === '') return;
-
-  try {
-    // Сохраняем в таблицу
-    await saveTextToSheet(chatId, msg.text);
-    
-    // Подтверждение
-    await bot.sendMessage(chatId, '✅ Повідомлення збережено в таблицю!', {
-      reply_to_message_id: msg.message_id
-    });
-
-    console.log(`✅ Сообщение сохранено от ${chatId}: ${msg.text.substring(0, 50)}...`);
-    
-  } catch (error) {
-    console.error('❌ Ошибка сохранения:', error);
-    await bot.sendMessage(chatId, '❌ Помилка при збереженні');
-  }
-});
-
-// === ФУНКЦИЯ СОХРАНЕНИЯ В GOOGLE SHEETS ===
-async function saveTextToSheet(chatId, text) {
-  try {
-    const sheets = google.sheets({ version: 'v4', auth: await auth.getClient() });
-    
-    const now = new Date();
-    const formattedDate = now.toLocaleString('uk-UA', { 
-      timeZone: config.TZ || 'Europe/Kyiv',
-      hour12: false 
-    });
-
-    // Проверяем/создаем лист
-    try {
-      await sheets.spreadsheets.values.get({
-        spreadsheetId: config.SPREADSHEET_ID,
-        range: 'Текстові повідомлення!A1'
-      });
-    } catch (e) {
-      // Создаем новый лист
-      await sheets.spreadsheets.batchUpdate({
-        spreadsheetId: config.SPREADSHEET_ID,
-        resource: {
-          requests: [{
-            addSheet: {
-              properties: { 
-                title: 'Текстові повідомлення',
-                gridProperties: { frozenRowCount: 1 }
-              }
-            }
-          }]
-        }
-      });
-      
-      // Добавляем заголовки
-      await sheets.spreadsheets.values.update({
-        spreadsheetId: config.SPREADSHEET_ID,
-        range: 'Текстові повідомлення!A1:C1',
-        valueInputOption: 'USER_ENTERED',
-        resource: {
-          values: [['Дата і час', 'Текст повідомлення', 'Дія']]
-        }
-      });
-    }
-
-    // Добавляем запись
-    await sheets.spreadsheets.values.append({
-      spreadsheetId: config.SPREADSHEET_ID,
-      range: 'Текстові повідомлення!A:C',
-      valueInputOption: 'USER_ENTERED',
-      resource: {
-        values: [[
-          formattedDate,
-          text,
-          `=HYPERLINK("https://t.me/${config.BOT_USERNAME}", "Відповісти")`
-        ]]
-      }
-    });
-
-    console.log('✅ Сохранено в таблицу');
-    
-  } catch (error) {
-    console.error('❌ Ошибка Sheets:', error);
-    throw error;
-  }
-}
-
 // Самопинг для Render
 setInterval(() => {
   axios.get(config.PUBLIC_URL).catch(() => {});
@@ -740,9 +465,11 @@ setInterval(() => {
 
 // Запуск сервера
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log('🚀 Bot запущен на порту', PORT);
   console.log('👤 Admin ID:', config.ADMIN_CHAT_ID);
   console.log('📊 Spreadsheet ID:', config.SPREADSHEET_ID);
+  
+  // Запускаем диагностику
+  await diagnoseSheets();
 });
-*/
