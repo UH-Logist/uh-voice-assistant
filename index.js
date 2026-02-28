@@ -114,25 +114,26 @@ bot.onText(/\/party/, async (msg) => {
     
     messageText += '👇 <b>Виберіть партію за номером:</b>';
 
-    // Создаем клавиатуру ТОЛЬКО с номерами (компактно)
+    // Создаем клавиатуру ТОЛЬКО с номерами (широкие кнопки)
     const keyboard = [];
-    const numbersPerRow = 5; // по 5 номеров в ряд
+    const numbersPerRow = 3; // по 3 номера в ряд для более широких кнопок
     
     for (let i = 0; i < parties.length; i += numbersPerRow) {
       const row = [];
       for (let j = 0; j < numbersPerRow && i + j < parties.length; j++) {
         const party = parties[i + j];
-        // Показываем только порядковый номер для компактности
+        // Добавляем пробелы для расширения кнопки
+        const buttonText = `  ${i + j + 1}  `; // пробелы слева и справа
         row.push({ 
-          text: `${i + j + 1}`,
+          text: buttonText,
           callback_data: `party_${party.number}`
         });
       }
       keyboard.push(row);
     }
     
-    // Добавляем кнопку отмены
-    keyboard.push([{ text: '❌ Скасувати', callback_data: 'cancel' }]);
+    // Добавляем кнопку отмены (тоже расширенную)
+    keyboard.push([{ text: '     ❌ Скасувати     ', callback_data: 'cancel' }]);
 
     await bot.sendMessage(chatId, 
       messageText,
@@ -143,12 +144,6 @@ bot.onText(/\/party/, async (msg) => {
         }
       }
     );
-
-  } catch (error) {
-    console.error('❌ Ошибка загрузки партий:', error);
-    await bot.sendMessage(chatId, '❌ Помилка завантаження партій. Спробуйте пізніше.');
-  }
-});
 
   } catch (error) {
     console.error('❌ Ошибка загрузки партий:', error);
@@ -195,7 +190,8 @@ bot.on('callback_query', async (callbackQuery) => {
 
   // Кнопки "Додати ще одну" и "Вибрати іншу партію"
   if (data === 'add_another' || data === 'choose_party') {
-    return handleAfterAddButtons(callbackQuery, data);
+    await handleAfterAddButtons(callbackQuery, data);
+    return;
   }
 
   // Проверяем состояние пользователя
