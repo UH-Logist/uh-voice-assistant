@@ -318,14 +318,16 @@ bot.on('callback_query', async (callbackQuery) => {
 // === ФУНКЦИИ РАБОТЫ С GOOGLE SHEETS ===
 
 // Получение списка партий из колонки B листа "Рейсы"
+// Получение списка партий из колонки B, где статус (колонка G) не "Доставлено"
 async function getPartiesList() {
   try {
     console.log('🔍 Читаю лист Рейсы...');
     
+    // Получаем данные из колонок B (партии) и G (статус)
     const response = await sheets.spreadsheets.values.get({
       auth: await auth.getClient(),
       spreadsheetId: config.SPREADSHEET_ID,
-      range: 'Рейсы!B:B'
+      range: 'Рейсы!B:G'  // B = партии, G = статус
     });
 
     console.log('✅ Ответ от Sheets получен');
@@ -336,6 +338,39 @@ async function getPartiesList() {
       console.log('⚠️ Лист Рейсы пуст');
       return [];
     }
+
+    // Пропускаем заголовок (первую строку)
+    // Для каждой строки: B = rows[i][0], G = rows[i][5] (индекс 5, так как колонки B-G это 6 колонок)
+    const parties = [];
+    
+    for (let i = 1; i < rows.length; i++) {
+      const party = rows[i]?.[0]; // колонка B
+      const status = rows[i]?.[5]; // колонка G (индекс 5)
+      
+      // Пропускаем пустые партии
+      if (!party || party.toString().trim() === '') continue;
+      
+      // Проверяем статус - показываем, если статус НЕ "Доставлено"
+      // Приводим к нижнему регистру для сравнения
+      const statusLower = (status || '').toString().toLowerCase().trim();
+      
+      if (statusLower !== 'доставлено') {
+        parties.push(party.toString().trim());
+        console.log(`✅ Партия ${party} добавлена (статус: "${status || 'пусто'}")`);
+      } else {
+        console.log(`⏭️ Партия ${party} пропущена (статус: Доставлено)`);
+      }
+    }
+    
+    console.log(`📋 Найдено активных партий: ${parties.length}`);
+    console.log('📋 Активные партии:', parties);
+    
+    return parties;
+  } catch (error) {
+    console.error('❌ Ошибка получения партий:', error);
+    throw error;
+  }
+}
 
     // Пропускаем заголовок (первую строку) и фильтруем пустые
     const parties = rows.slice(1)
