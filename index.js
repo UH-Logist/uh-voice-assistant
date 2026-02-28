@@ -116,7 +116,7 @@ bot.onText(/\/party/, async (msg) => {
 
     // Создаем клавиатуру с номерами партий
     const keyboard = [];
-    const buttonsPerRow = 2; // по 2 кнопки в ряд для широких кнопок
+    const buttonsPerRow = 3; // по 3 кнопки в ряд для широких кнопок
     
     for (let i = 0; i < parties.length; i += buttonsPerRow) {
       const row = [];
