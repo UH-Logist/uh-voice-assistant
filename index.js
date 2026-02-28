@@ -32,10 +32,26 @@ app.post(`/bot${config.BOT_TOKEN}`, (req, res) => {
 app.get('/', (_, res) => res.status(200).send('✅ Bot is running'));
 
 // Google Sheets клиент
-const auth = new google.auth.GoogleAuth({
-  keyFile: path.join(__dirname, 'credentials.json'),
-  scopes: ['https://www.googleapis.com/auth/spreadsheets']
-});
+let auth;
+
+// Проверяем, есть ли credentials.json в Environment Variables
+if (process.env.CREDENTIALS_JSON) {
+  // Если есть - используем его
+  const credentials = JSON.parse(process.env.CREDENTIALS_JSON);
+  auth = new google.auth.GoogleAuth({
+    credentials: credentials,
+    scopes: ['https://www.googleapis.com/auth/spreadsheets']
+  });
+  console.log('✅ Использую credentials из Environment Variables');
+} else {
+  // Если нет - пробуем файл
+  const credentialsPath = path.join(__dirname, 'credentials.json');
+  auth = new google.auth.GoogleAuth({
+    keyFile: credentialsPath,
+    scopes: ['https://www.googleapis.com/auth/spreadsheets']
+  });
+  console.log('✅ Использую файл credentials.json');
+}
 
 // Настройки команд бота
 bot.setMyCommands([
