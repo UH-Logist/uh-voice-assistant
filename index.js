@@ -112,27 +112,25 @@ bot.onText(/\/party/, async (msg) => {
       messageText += `   └─ ${party.status}\n\n`;
     });
     
-    messageText += '👇 <b>Виберіть партію за номером:</b>';
+    messageText += '👇 <b>Виберіть партію:</b>';
 
-    // Создаем клавиатуру ТОЛЬКО с номерами (широкие кнопки)
+    // Создаем клавиатуру с номерами партий
     const keyboard = [];
-    const numbersPerRow = 3; // по 3 номера в ряд для более широких кнопок
+    const buttonsPerRow = 2; // по 2 кнопки в ряд для широких кнопок
     
-    for (let i = 0; i < parties.length; i += numbersPerRow) {
+    for (let i = 0; i < parties.length; i += buttonsPerRow) {
       const row = [];
-      for (let j = 0; j < numbersPerRow && i + j < parties.length; j++) {
+      for (let j = 0; j < buttonsPerRow && i + j < parties.length; j++) {
         const party = parties[i + j];
-        // Добавляем пробелы для расширения кнопки
-        const buttonText = `  ${i + j + 1}  `; // пробелы слева и справа
         row.push({ 
-          text: buttonText,
+          text: `  ${party.number}  `, // пробелы для расширения
           callback_data: `party_${party.number}`
         });
       }
       keyboard.push(row);
     }
     
-    // Добавляем кнопку отмены (тоже расширенную)
+    // Добавляем кнопку отмены
     keyboard.push([{ text: '     ❌ Скасувати     ', callback_data: 'cancel' }]);
 
     await bot.sendMessage(chatId, 
