@@ -34,23 +34,22 @@ app.get('/', (_, res) => res.status(200).send('✅ Bot is running'));
 // Google Sheets клиент
 let auth;
 
-// Проверяем, есть ли credentials.json в Environment Variables
-if (process.env.CREDENTIALS_JSON) {
-  // Если есть - используем его
+// Используем credentials из переменной окружения CREDENTIALS_JSON
+if (!process.env.CREDENTIALS_JSON) {
+  console.error('❌ CREDENTIALS_JSON не найдена в переменных окружения!');
+  throw new Error('CREDENTIALS_JSON environment variable is required');
+}
+
+try {
   const credentials = JSON.parse(process.env.CREDENTIALS_JSON);
   auth = new google.auth.GoogleAuth({
     credentials: credentials,
     scopes: ['https://www.googleapis.com/auth/spreadsheets']
   });
-  console.log('✅ Использую credentials из Environment Variables');
-} else {
-  // Если нет - пробуем файл
-  const credentialsPath = path.join(__dirname, 'credentials.json');
-  auth = new google.auth.GoogleAuth({
-    keyFile: credentialsPath,
-    scopes: ['https://www.googleapis.com/auth/spreadsheets']
-  });
-  console.log('✅ Использую файл credentials.json');
+  console.log('✅ Google Sheets авторизация настроена через CREDENTIALS_JSON');
+} catch (error) {
+  console.error('❌ Ошибка парсинга CREDENTIALS_JSON:', error.message);
+  throw error;
 }
 
 // Настройки команд бота
