@@ -60,6 +60,7 @@ const userState = new Map(); // chatId -> { step, partyNumber, parties, allParti
 bot.setMyCommands([
   { command: 'start', description: 'Запустити бота' },
   { command: 'party', description: 'Вибрати партію для запису' },
+  { command: 'update', description: 'Оновити базу даних' },
   { command: 'cancel', description: 'Скасувати поточну дію' }
 ]);
 
@@ -76,6 +77,7 @@ bot.onText(/\/start/, async (msg) => {
     'Цей бот допомагає додавати нотатки до партій у Google Таблиці.\n\n' +
     'Команди:\n' +
     '/party - Вибрати партію для запису\n' +
+    '/update - Оновити базу даних\n' +
     '/cancel - Скасувати поточну дію',
     { parse_mode: 'HTML' }
   );
@@ -191,6 +193,25 @@ async function showPartiesPage(chatId) {
   }
 }
 
+// Команда /update - обновление базы
+bot.onText(/\/update/, async (msg) => {
+  const chatId = msg.chat.id;
+  
+  if (String(chatId) !== String(config.ADMIN_CHAT_ID)) return;
+
+  try {
+    await bot.sendMessage(chatId, '🔄 Оновлюю базу даних...');
+    
+    const result = await markSyncTime();
+    
+    await bot.sendMessage(chatId, result.message);
+
+  } catch (error) {
+    console.error('❌ Ошибка обновления:', error);
+    await bot.sendMessage(chatId, '❌ Помилка при оновленні бази');
+  }
+});
+
 // Команда /cancel
 bot.onText(/\/cancel/, async (msg) => {
   const chatId = msg.chat.id;
@@ -242,6 +263,23 @@ bot.on('callback_query', async (callbackQuery) => {
 
     userState.set(chatId, state);
     await showPartiesPage(chatId);
+    return;
+  }
+
+  // Кнопка обновления базы
+  if (data === 'update_db') {
+    console.log('🔄 Обновление базы по кнопке');
+    
+    await bot.editMessageText('🔄 Оновлюю базу даних...', {
+      chat_id: chatId,
+      message_id: messageId
+    });
+    
+    const result = await markSyncTime();
+    
+    // Отправляем результат
+    await bot.sendMessage(chatId, result.message);
+    
     return;
   }
 
@@ -367,7 +405,8 @@ bot.on('message', async (msg) => {
         reply_markup: {
           inline_keyboard: [
             [{ text: '📋 Додати ще одну', callback_data: 'add_another' }],
-            [{ text: '🔍 Вибрати іншу партію', callback_data: 'choose_party' }]
+            [{ text: '🔍 Вибрати іншу партію', callback_data: 'choose_party' }],
+            [{ text: '🔄 Оновити базу', callback_data: 'update_db' }]
           ]
         }
       }
@@ -509,6 +548,56 @@ async function addNoteToParty(partyNumber, note) {
   } catch (error) {
     console.error('❌ Ошибка добавления заметки:', error);
     throw error;
+  }
+}
+
+// Функция обновления базы (аналог markSyncTime из Apps Script)
+async function markSyncTime() {
+  try {
+    console.log('🔄 Оновлення бази даних...');
+    
+    const sheetsClient = google.sheets({ version: 'v4', auth: await auth.getClient() });
+    
+    // Получаем текущее время
+    const now = new Date();
+    const futureTime = new Date(now.getTime()); // если нужно +5 минут, добавьте + 5*60*1000
+    
+    // Форматируем время для отображения
+    const formattedTime = now.toLocaleString('uk-UA', { 
+      timeZone: 'Europe/Kyiv',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    }).replace(',', '');
+    
+    // Обновляем ячейку Y1
+    await sheetsClient.spreadsheets.values.update({
+      spreadsheetId: config.SPREADSHEET_ID,
+      range: 'Рейсы!Y1',
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values: [[futureTime.toISOString()]]
+      }
+    });
+    
+    // Обновляем ячейку H1 с текстом
+    await sheetsClient.spreadsheets.values.update({
+      spreadsheetId: config.SPREADSHEET_ID,
+      range: 'Рейсы!H1',
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values: [[`Хронология (Обновлено: ${formattedTime})`]]
+      }
+    });
+    
+    console.log('✅ База оновлена');
+    
+    return { success: true, message: `✅ Базу оновлено о ${formattedTime}` };
+  } catch (error) {
+    console.error('❌ Ошибка обновления базы:', error);
+    return { success: false, message: `❌ Помилка: ${error.message}` };
   }
 }
 
