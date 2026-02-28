@@ -602,15 +602,15 @@ async function markSyncTime() {
       second: '2-digit'
     }).replace(',', '');
     
-    // Обновляем ячейку Y1 с правильным форматом
-    await sheetsClient.spreadsheets.values.update({
-      spreadsheetId: config.SPREADSHEET_ID,
-      range: 'Рейсы!Y1',
-      valueInputOption: 'USER_ENTERED',
-      requestBody: {
-        values: [[formattedDateTime]]
-      }
-    });
+// Обновляем ячейку Y1 - отправляем как ДАТУ
+await sheetsClient.spreadsheets.values.update({
+  spreadsheetId: config.SPREADSHEET_ID,
+  range: 'Рейсы!Y1',
+  valueInputOption: 'USER_ENTERED',
+  requestBody: {
+    values: [[new Date()]] // ← ОБЪЕКТ DATE
+  }
+});
     
     // Обновляем ячейку H1 с текстом
     await sheetsClient.spreadsheets.values.update({
