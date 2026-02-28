@@ -150,7 +150,7 @@ bot.onText(/\/cancel/, async (msg) => {
   await bot.sendMessage(chatId, '✅ Дію скасовано.');
 });
 
-// Обработка callback-кнопок
+// Обработка callback-кнопок (выбор партии)
 bot.on('callback_query', async (callbackQuery) => {
   const chatId = callbackQuery.message.chat.id;
   const messageId = callbackQuery.message.message_id;
@@ -166,6 +166,7 @@ bot.on('callback_query', async (callbackQuery) => {
   await bot.answerCallbackQuery(callbackQuery.id);
   console.log('✅ Ответ на callback_query отправлен');
 
+  // Кнопка отмены
   if (data === 'cancel') {
     console.log('🔄 Обработка cancel');
     userState.delete(chatId);
@@ -176,6 +177,12 @@ bot.on('callback_query', async (callbackQuery) => {
     return;
   }
 
+  // Кнопки "Додати ще одну" и "Вибрати іншу партію"
+  if (data === 'add_another' || data === 'choose_party') {
+    return handleAfterAddButtons(callbackQuery, data);
+  }
+
+  // Проверяем состояние пользователя
   const state = userState.get(chatId);
   console.log('📊 Состояние пользователя:', state);
 
@@ -232,6 +239,32 @@ bot.on('callback_query', async (callbackQuery) => {
   }
 });
 
+// Функция обработки кнопок после добавления
+async function handleAfterAddButtons(callbackQuery, data) {
+  const chatId = callbackQuery.message.chat.id;
+  
+  if (data === 'add_another') {
+    const state = userState.get(chatId);
+    if (state && state.partyNumber) {
+      userState.set(chatId, {
+        step: 'waiting_message',
+        partyNumber: state.partyNumber
+      });
+      await bot.sendMessage(chatId, 
+        `📝 Надішліть ще один текст для партії <b>${state.partyNumber}</b>:`,
+        { parse_mode: 'HTML' }
+      );
+    } else {
+      await bot.sendMessage(chatId, '❌ Стан втрачено. Використайте /party');
+    }
+  }
+  
+  if (data === 'choose_party') {
+    userState.delete(chatId);
+    await bot.sendMessage(chatId, '🔍 Використайте /party для вибору іншої партії');
+  }
+}
+
 // Обработка текстовых сообщений
 bot.on('message', async (msg) => {
   const chatId = msg.chat.id;
@@ -252,7 +285,7 @@ bot.on('message', async (msg) => {
   try {
     await bot.sendChatAction(chatId, 'typing');
     
-    const result = await addNoteToParty(state.partyNumber, msg.text);
+    await addNoteToParty(state.partyNumber, msg.text);
     
     userState.delete(chatId);
     
@@ -282,42 +315,8 @@ bot.on('message', async (msg) => {
   }
 });
 
-// Обработка дополнительных callback-кнопок после успешного добавления
-bot.on('callback_query', async (callbackQuery) => {
-  const chatId = callbackQuery.message.chat.id;
-  const data = callbackQuery.data;
-  
-  if (String(chatId) !== String(config.ADMIN_CHAT_ID)) {
-    return bot.answerCallbackQuery(callbackQuery.id, { text: '❌ Доступ заборонено' });
-  }
-
-  await bot.answerCallbackQuery(callbackQuery.id);
-
-  if (data === 'add_another') {
-    const state = userState.get(chatId);
-    if (state && state.partyNumber) {
-      userState.set(chatId, {
-        step: 'waiting_message',
-        partyNumber: state.partyNumber
-      });
-      await bot.sendMessage(chatId, 
-        `📝 Надішліть ще один текст для партії <b>${state.partyNumber}</b>:`,
-        { parse_mode: 'HTML' }
-      );
-    } else {
-      await bot.sendMessage(chatId, '❌ Стан втрачено. Використайте /party');
-    }
-  }
-  
-  if (data === 'choose_party') {
-    userState.delete(chatId);
-    await bot.sendMessage(chatId, '🔍 Використайте /party для вибору іншої партії');
-  }
-});
-
 // === ФУНКЦИИ РАБОТЫ С GOOGLE SHEETS ===
 
-// Получение списка партий из колонки B листа "Рейсы"
 // Получение списка партий из колонки B, где статус (колонка G) не "Доставлено"
 async function getPartiesList() {
   try {
@@ -340,7 +339,6 @@ async function getPartiesList() {
     }
 
     // Пропускаем заголовок (первую строку)
-    // Для каждой строки: B = rows[i][0], G = rows[i][5] (индекс 5, так как колонки B-G это 6 колонок)
     const parties = [];
     
     for (let i = 1; i < rows.length; i++) {
@@ -351,7 +349,6 @@ async function getPartiesList() {
       if (!party || party.toString().trim() === '') continue;
       
       // Проверяем статус - показываем, если статус НЕ "Доставлено"
-      // Приводим к нижнему регистру для сравнения
       const statusLower = (status || '').toString().toLowerCase().trim();
       
       if (statusLower !== 'доставлено') {
@@ -363,22 +360,6 @@ async function getPartiesList() {
     }
     
     console.log(`📋 Найдено активных партий: ${parties.length}`);
-    console.log('📋 Активные партии:', parties);
-    
-    return parties;
-  } catch (error) {
-    console.error('❌ Ошибка получения партий:', error);
-    throw error;
-  }
-}
-
-    // Пропускаем заголовок (первую строку) и фильтруем пустые
-    const parties = rows.slice(1)
-      .map(row => row[0])
-      .filter(party => party && party.toString().trim() !== '');
-    
-    console.log(`📋 Найдено партий: ${parties.length}`);
-    console.log('📋 Первые 5 партий:', parties.slice(0, 5));
     
     return parties;
   } catch (error) {
@@ -411,7 +392,7 @@ async function addNoteToParty(partyNumber, note) {
 
     // Ищем строку с нужной партией (пропускаем заголовок)
     for (let i = 1; i < rows.length; i++) {
-      if (rows[i][0] === partyNumber) { // колонка B (индекс 0 в массиве)
+      if (rows[i] && rows[i][0] === partyNumber) { // колонка B (индекс 0)
         targetRowIndex = i + 1; // +1 потому что строки в Sheets начинаются с 1
         break;
       }
@@ -430,7 +411,7 @@ async function addNoteToParty(partyNumber, note) {
 
     const currentValue = cellResponse.data.values?.[0]?.[0] || '';
     
-    // Формируем новое значение (старое + перенос + новое)
+    // Формируем новое значение (новое + перенос + старое)
     let newValue;
     if (currentValue.trim() === '') {
       newValue = newText;
@@ -480,10 +461,10 @@ async function diagnoseSheets() {
       const test = await sheetsClient.spreadsheets.values.get({
         auth: await auth.getClient(),
         spreadsheetId: config.SPREADSHEET_ID,
-        range: 'Рейсы!B1:B5'
+        range: 'Рейсы!B1:G5'
       });
       console.log('✅ Лист "Рейсы" доступен');
-      console.log('📋 Первые строки:', test.data.values);
+      console.log('📋 Первые строки (B:G):', test.data.values);
     } catch (e) {
       console.error('❌ Лист "Рейсы" НЕ доступен:', e.message);
     }
